@@ -1,30 +1,20 @@
 import { v2 as cloudinary } from 'cloudinary';
 
 import asyncHandler from '../middlewares/asyncHandler.js';
-import ErrorResponse from '../utils/errorResponse.js';
 import Post from '../models/Post.js';
 import User from '../models/User.js';
+import mongoose from 'mongoose';
 
 export const createPost = asyncHandler(async (req, res, next) => {
   const { content, image } = req.body;
 
-  // if (!content || content.trim().length === 0) {
-  //   return next(new ErrorResponse('Field cannot be an empty value', 400));
-  // }
-
-  console.log(req.body);
-  // return;
   const post = await Post.create({ content, image, postedBy: req.user._id });
-  console.log(req.body);
+
   res.status(201).json({ success: true, post });
 });
 
 export const uploadImage = asyncHandler(async (req, res, next) => {
-  console.log(req.files);
-  // return;
-
   const result = await cloudinary.uploader.upload(req.files.image.path);
-  console.log(result, 'asdasdasdasd');
 
   res.status(201).json({
     success: true,
@@ -49,6 +39,7 @@ export const feed = asyncHandler(async (req, res, next) => {
 
   const posts = await Post.find({ postedBy: { $in: following } })
     .populate('postedBy', '_id name image')
+    .populate('comments.postedBy', '_id name')
     .sort({ createdAt: -1 })
     .limit(20);
 
@@ -63,7 +54,6 @@ export const editPost = asyncHandler(async (req, res, next) => {
     { content: content },
     { new: true }
   );
-  console.log(post);
   res.status(200).send({ success: true, post });
 });
 
@@ -72,4 +62,73 @@ export const deletePost = asyncHandler(async (req, res, next) => {
 
   await Post.findByIdAndDelete(id);
   res.status(200).send({ success: true, message: 'Post deleted successfully' });
+});
+
+export const like = asyncHandler(async (req, res, next) => {
+  const { id } = req.body;
+  const post = await Post.findByIdAndUpdate(
+    id,
+    { $addToSet: { likes: req.user._id } },
+    { new: true }
+  );
+
+  res.status(200).json({ success: true, post });
+});
+export const unlike = asyncHandler(async (req, res, next) => {
+  const { id } = req.body;
+  const post = await Post.findByIdAndUpdate(
+    id,
+    { $pull: { likes: req.user._id } },
+    { new: true }
+  );
+
+  res.status(200).json({ success: true, post });
+});
+
+export const likeCount = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+
+  const likes = await Post.aggregate([
+    { $match: { _id: mongoose.Types.ObjectId(id) } },
+    {
+      $project: {
+        _id: false,
+        total_likes: { $size: '$likes' },
+        total_comments: { $size: '$comments' },
+      },
+    },
+  ]);
+
+  res.status(200).json({ success: true, likes });
+});
+
+export const addComment = asyncHandler(async (req, res, next) => {
+  const { id, comment } = req.body;
+
+  const post = await Post.findByIdAndUpdate(
+    id,
+    {
+      $push: { comments: { comment: comment, postedBy: req.user._id } },
+    },
+    { new: true }
+  )
+    .populate('postedBy', '_id name')
+    .populate('comments.postedBy', '_id name');
+
+  res.status(200).json({ success: true, post });
+});
+export const deleteComment = asyncHandler(async (req, res, next) => {
+  const { postId, commentId } = req.body;
+
+  const post = await Post.findByIdAndUpdate(
+    postId,
+    {
+      $pull: { comments: { _id: commentId } },
+    },
+    { new: true }
+  )
+    .populate('postedBy', '_id name')
+    .populate('comments.postedBy', '_id name');
+
+  res.status(200).json({ success: true, post });
 });

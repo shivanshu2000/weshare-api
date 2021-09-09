@@ -1,9 +1,11 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
 import asyncHandler from '../middlewares/asyncHandler.js';
 import ErrorResponse from '../utils/errorResponse.js';
 import User from '../models/User.js';
 import { checkPassword, hashPassword } from '../helpers/auth.js';
+import Post from '../models/Post.js';
 
 export const register = asyncHandler(async (req, res, next) => {
   const { name, email, password, confirmPassword } = req.body;
@@ -29,7 +31,6 @@ export const register = asyncHandler(async (req, res, next) => {
 
   const exists = await User.findOne({ email });
   if (exists) {
-    console.log(exists);
     return next(new ErrorResponse('Email already exists.', 400));
   }
   let hashedPassword;
@@ -49,7 +50,7 @@ export const login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
   const user = await User.findOne({ email });
-  console.log(req.body);
+
   if (!user) {
     console.log('here');
     return next(new ErrorResponse('Invalid email or password', 400));
@@ -58,11 +59,9 @@ export const login = asyncHandler(async (req, res, next) => {
   const match = await checkPassword(password, user.password);
 
   if (!match) {
-    console.log('not here');
     return next(new ErrorResponse('Invalid email or password', 400));
   }
 
-  console.log(match, user);
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
     expiresIn: '2d',
   });
@@ -90,8 +89,6 @@ export const findPeople = asyncHandler(async (req, res, next) => {
 });
 
 export const follow = asyncHandler(async (req, res, next) => {
-  console.log(req.body);
-
   const followed = await User.findByIdAndUpdate(
     req.body.id,
     {
@@ -112,7 +109,6 @@ export const follow = asyncHandler(async (req, res, next) => {
 });
 
 export const following = asyncHandler(async (req, res, next) => {
-  console.log(req.body);
   const user = await User.findByIdAndUpdate(
     req.user._id,
     {
@@ -131,6 +127,13 @@ export const getFollowing = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, following });
 });
 
+export const getFollowers = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user._id);
+  const followers = await User.find({ _id: user.followers }).limit(50);
+
+  res.status(200).json({ success: true, followers });
+});
+
 export const unfollow = asyncHandler(async (req, res, next) => {
   const unfollowed = await User.findByIdAndUpdate(
     req.body.id,
@@ -143,7 +146,45 @@ export const unfollow = asyncHandler(async (req, res, next) => {
     { new: true }
   );
 
-  console.log(unfollowed, user);
+  res.status(200).json({ success: true, user });
+});
+
+export const remove = asyncHandler(async (req, res, next) => {
+  const removeFollowed = await User.findByIdAndUpdate(
+    req.body.id,
+    { $pull: { following: req.user._id } },
+    { new: true }
+  );
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $pull: { followers: req.body.id } },
+    { new: true }
+  );
 
   res.status(200).json({ success: true, user });
+});
+
+export const userDetails = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const postsCount = await Post.find({ postedBy: id }).countDocuments();
+  const followersCount = await User.aggregate([
+    { $match: { _id: mongoose.Types.ObjectId(id) } },
+    {
+      $project: {
+        _id: false,
+        total_followers: { $size: '$followers' },
+      },
+    },
+  ]);
+  const followingCount = await User.aggregate([
+    { $match: { _id: mongoose.Types.ObjectId(id) } },
+    {
+      $project: {
+        _id: false,
+        total_following: { $size: '$following' },
+      },
+    },
+  ]);
+
+  res.status(200).json({ postsCount, followersCount, followingCount });
 });
