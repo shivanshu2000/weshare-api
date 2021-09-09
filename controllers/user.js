@@ -64,7 +64,7 @@ export const login = asyncHandler(async (req, res, next) => {
 
   console.log(match, user);
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-    expiresIn: '10s',
+    expiresIn: '2d',
   });
 
   user.password = undefined;
@@ -76,4 +76,74 @@ export const login = asyncHandler(async (req, res, next) => {
 
 export const currentUser = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ success: true, user: req.user });
+});
+
+export const findPeople = asyncHandler(async (req, res, next) => {
+  const user = await User.findOne({ _id: req.user._id });
+
+  const following = user.following;
+  following.push(user._id);
+
+  const people = await User.find({ _id: { $nin: following } }).limit(15);
+
+  res.status(200).json({ success: true, people });
+});
+
+export const follow = asyncHandler(async (req, res, next) => {
+  console.log(req.body);
+
+  const followed = await User.findByIdAndUpdate(
+    req.body.id,
+    {
+      $addToSet: { followers: req.user._id },
+    },
+    { new: true }
+  );
+
+  const follows = await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $addToSet: { following: req.body.id },
+    },
+    { new: true }
+  ).select('-password -resetToken -__v');
+
+  res.status(200).json({ success: true, followed, follows });
+});
+
+export const following = asyncHandler(async (req, res, next) => {
+  console.log(req.body);
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $addToSet: { following: req.body._id },
+    },
+    { new: true }
+  );
+
+  res.status(200).json({ success: true, user });
+});
+
+export const getFollowing = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user._id);
+  const following = await User.find({ _id: user.following }).limit(50);
+
+  res.status(200).json({ success: true, following });
+});
+
+export const unfollow = asyncHandler(async (req, res, next) => {
+  const unfollowed = await User.findByIdAndUpdate(
+    req.body.id,
+    { $pull: { followers: req.user._id } },
+    { new: true }
+  );
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $pull: { following: req.body.id } },
+    { new: true }
+  );
+
+  console.log(unfollowed, user);
+
+  res.status(200).json({ success: true, user });
 });

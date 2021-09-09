@@ -19,9 +19,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
 import user from './routes/user.js';
+import post from './routes/post.js';
 import errorHandler from './middlewares/errorHandler.js';
 
 app.use('/api/user', user);
+app.use('/api/posts', post);
 app.use(errorHandler);
 
 app.listen(process.env.PORT, () => {
